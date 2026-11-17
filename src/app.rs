@@ -611,6 +611,7 @@ pub struct App {
     #[cfg(any(test, feature = "test-support", debug_assertions))]
     pub(crate) name: Option<&'static str>,
     quitting: bool,
+    reduce_motion: bool,
 }
 
 impl App {
@@ -682,6 +683,7 @@ impl App {
                 #[cfg(any(feature = "inspector", debug_assertions))]
                 inspector_element_registry: InspectorElementRegistry::default(),
                 quitting: false,
+                reduce_motion: false,
 
                 #[cfg(any(test, feature = "test-support", debug_assertions))]
                 name: None,
@@ -770,6 +772,20 @@ impl App {
     /// Gracefully quit the application via the platform's standard routine.
     pub fn quit(&self) {
         self.platform.quit();
+    }
+
+    /// Whether animations and motion should be reduced.
+    ///
+    /// Backport of the GPUI 0.3 flag with the same name. It defaults to
+    /// `false`; the embedding application (or a platform reader) drives it,
+    /// and motion primitives settle immediately when it is set.
+    pub fn reduce_motion(&self) -> bool {
+        self.reduce_motion
+    }
+
+    /// Sets the reduced-motion preference (see [`Self::reduce_motion`]).
+    pub fn set_reduce_motion(&mut self, reduce_motion: bool) {
+        self.reduce_motion = reduce_motion;
     }
 
     /// Schedules all windows in the application to be redrawn. This can be called

@@ -623,3 +623,9 @@ priority = -1
 [lints.rust.unexpected_cfgs]
 level = "allow"
 priority = 0
+
+# xattr 0.2.3 (via zed-async-tar) references libc::ENOATTR, removed for Linux
+# in libc >= ~0.2.18x. Local vendored copy maps Linux/Android to ENODATA (the
+# correct kernel errno). Re-evaluate if zed-async-tar updates its dependency.
+[patch.crates-io]
+xattr = { path = "patches/xattr" }

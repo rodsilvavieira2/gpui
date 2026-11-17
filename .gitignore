@@ -1,0 +1,4 @@
+# Build output (never commit).
+/target/
+# Untracked local lockfile (library crates resolve per build).
+/Cargo.lock

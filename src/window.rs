@@ -1656,6 +1656,23 @@ impl Window {
         self.on_next_frame(move |_, cx| cx.notify(entity));
     }
 
+    /// Test-only: drains the callbacks queued by [`Self::request_animation_frame`],
+    /// runs each as the platform would at the next frame, and reports how many
+    /// were queued.
+    ///
+    /// Backport of the GPUI 0.3 test helper with the same name. Here a "pending
+    /// frame" is a queued next-frame callback: 0.2.2 has no platform frame
+    /// counter, and the test platform never pumps frames on its own.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn simulate_next_frame(&mut self, cx: &mut App) -> usize {
+        let callbacks = std::mem::take(&mut *self.next_frame_callbacks.borrow_mut());
+        let count = callbacks.len();
+        for callback in callbacks {
+            callback(self, cx);
+        }
+        count
+    }
+
     /// Spawn the future returned by the given closure on the application thread pool.
     /// The closure is provided a handle to the current window and an `AsyncWindowContext` for
     /// use within your future.
