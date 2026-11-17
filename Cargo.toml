@@ -266,6 +266,9 @@ features = ["derive"]
 version = "0.2.2"
 package = "gpui_sum_tree"
 
+[dependencies.sys-locale]
+version = "0.3"
+
 [dependencies.taffy]
 version = "=0.9.0"
 
@@ -524,6 +527,10 @@ version = "0.2"
 version = "0.6"
 optional = true
 
+[target.'cfg(target_os = "macos")'.dependencies.objc2-app-kit]
+version = "0.3"
+features = ["NSWorkspace"]
+
 [target.'cfg(target_os = "macos")'.dependencies.objc2-metal]
 version = "0.3"
 optional = true
@@ -554,6 +561,7 @@ features = [
     "System_Threading",
     "UI_ViewManagement",
     "Wdk_System_SystemServices",
+    "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",

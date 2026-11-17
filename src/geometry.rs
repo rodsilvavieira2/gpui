@@ -2174,6 +2174,109 @@ impl Corner {
     }
 }
 
+/// Identifies a reference point on a 2D box, used to anchor positioned elements.
+///
+/// Backported from GPUI 0.3; 0.2 only has the four-corner [`Corner`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Anchor {
+    /// The top left corner
+    TopLeft,
+    /// The top right corner
+    TopRight,
+    /// The bottom left corner
+    BottomLeft,
+    /// The bottom right corner
+    BottomRight,
+    /// The top center position
+    TopCenter,
+    /// The bottom center position
+    BottomCenter,
+    /// The left center position
+    LeftCenter,
+    /// The right center position
+    RightCenter,
+}
+
+impl<T> Bounds<T>
+where
+    T: std::ops::Sub<Output = T> + Half + Clone + std::fmt::Debug + Default + PartialEq,
+{
+    /// Constructs a `Bounds` from a corner point and size. The specified corner will be placed at
+    /// the specified origin.
+    pub fn from_anchor_and_size(corner: Anchor, origin: Point<T>, size: Size<T>) -> Bounds<T> {
+        let origin = match corner {
+            Anchor::TopLeft => origin,
+            Anchor::TopRight => Point {
+                x: origin.x - size.width.clone(),
+                y: origin.y,
+            },
+            Anchor::BottomLeft => Point {
+                x: origin.x,
+                y: origin.y - size.height.clone(),
+            },
+            Anchor::BottomRight => Point {
+                x: origin.x - size.width.clone(),
+                y: origin.y - size.height.clone(),
+            },
+            Anchor::TopCenter => Point {
+                x: origin.x - size.width.half(),
+                y: origin.y,
+            },
+            Anchor::BottomCenter => Point {
+                x: origin.x - size.width.half(),
+                y: origin.y - size.height.clone(),
+            },
+            Anchor::LeftCenter => Point {
+                x: origin.x,
+                y: origin.y - size.height.half(),
+            },
+            Anchor::RightCenter => Point {
+                x: origin.x - size.width.clone(),
+                y: origin.y - size.height.half(),
+            },
+        };
+
+        Bounds { origin, size }
+    }
+}
+
+impl<T> Bounds<T>
+where
+    T: std::ops::Add<T, Output = T> + Half + Clone + std::fmt::Debug + Default + PartialEq,
+{
+    /// Returns the top center point of the bounds.
+    pub fn top_center(&self) -> Point<T> {
+        Point {
+            x: self.origin.x.clone() + self.size.width.half(),
+            y: self.origin.y.clone(),
+        }
+    }
+
+    /// Returns the bottom center point of the bounds.
+    pub fn bottom_center(&self) -> Point<T> {
+        Point {
+            x: self.origin.x.clone() + self.size.width.half(),
+            y: self.origin.y.clone() + self.size.height.clone(),
+        }
+    }
+
+    /// Returns the left center point of the bounds.
+    pub fn left_center(&self) -> Point<T> {
+        Point {
+            x: self.origin.x.clone(),
+            y: self.origin.y.clone() + self.size.height.half(),
+        }
+    }
+
+    /// Returns the right center point of the bounds.
+    pub fn right_center(&self) -> Point<T> {
+        Point {
+            x: self.origin.x.clone() + self.size.width.clone(),
+            y: self.origin.y.clone() + self.size.height.half(),
+        }
+    }
+}
+
 /// Represents the corners of a box in a 2D space, such as border radius.
 ///
 /// Each field represents the size of the corner on one side of the box: `top_left`, `top_right`, `bottom_right`, and `bottom_left`.
