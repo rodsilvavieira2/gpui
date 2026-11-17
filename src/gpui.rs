@@ -67,6 +67,10 @@ mod seal {
 }
 
 pub use action::*;
+#[cfg(any(test, feature = "test-support"))]
+pub mod agent_devtools;
+#[cfg(any(test, feature = "test-support"))]
+pub use agent_devtools::*;
 pub use anyhow::Result;
 pub use app::*;
 pub(crate) use arena::*;

@@ -104,6 +104,11 @@ name = "gpui"
 path = "src/gpui.rs"
 doctest = false
 
+[[test]]
+name = "agent_devtools_test"
+path = "tests/agent_devtools_test.rs"
+required-features = ["test-support"]
+
 [dependencies.anyhow]
 version = "1.0.86"
 

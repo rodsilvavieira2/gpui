@@ -3570,7 +3570,7 @@ pub const fn relative(fraction: f32) -> DefiniteLength {
 
 /// Returns the Golden Ratio, i.e. `~(1.0 + sqrt(5.0)) / 2.0`.
 pub fn phi() -> DefiniteLength {
-    relative(1.618_034)
+    relative(std::f64::consts::GOLDEN_RATIO as f32)
 }
 
 /// Constructs a `Rems` value representing a length in rems.

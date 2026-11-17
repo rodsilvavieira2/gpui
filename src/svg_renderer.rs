@@ -37,8 +37,17 @@ impl SvgRenderer {
             if serif.to_ascii_lowercase().contains("symbol")
                 || serif.to_ascii_lowercase().contains("standardsymbols")
             {
-                for candidate in ["Noto Serif", "DejaVu Serif", "Liberation Serif", "FreeSerif", "Times New Roman"] {
-                    if db.faces().any(|f| f.families.iter().any(|(name, _)| name == candidate)) {
+                for candidate in [
+                    "Noto Serif",
+                    "DejaVu Serif",
+                    "Liberation Serif",
+                    "FreeSerif",
+                    "Times New Roman",
+                ] {
+                    if db
+                        .faces()
+                        .any(|f| f.families.iter().any(|(name, _)| name == candidate))
+                    {
                         db.set_serif_family(candidate);
                         break;
                     }
@@ -46,8 +55,17 @@ impl SvgRenderer {
             }
 
             // Ensure sans-serif is bound to a high-quality proportional font if present:
-            for candidate in ["Inter", "Noto Sans", "DejaVu Sans", "Liberation Sans", "Arial"] {
-                if db.faces().any(|f| f.families.iter().any(|(name, _)| name == candidate)) {
+            for candidate in [
+                "Inter",
+                "Noto Sans",
+                "DejaVu Sans",
+                "Liberation Sans",
+                "Arial",
+            ] {
+                if db
+                    .faces()
+                    .any(|f| f.families.iter().any(|(name, _)| name == candidate))
+                {
                     db.set_sans_serif_family(candidate);
                     break;
                 }
@@ -66,18 +84,20 @@ impl SvgRenderer {
                 for family in font.families() {
                     match family {
                         usvg::FontFamily::Serif => name_list.push(usvg::fontdb::Family::Serif),
-                        usvg::FontFamily::SansSerif => name_list.push(usvg::fontdb::Family::SansSerif),
+                        usvg::FontFamily::SansSerif => {
+                            name_list.push(usvg::fontdb::Family::SansSerif)
+                        }
                         usvg::FontFamily::Cursive => name_list.push(usvg::fontdb::Family::Cursive),
                         usvg::FontFamily::Fantasy => name_list.push(usvg::fontdb::Family::Fantasy),
-                        usvg::FontFamily::Monospace => name_list.push(usvg::fontdb::Family::Monospace),
+                        usvg::FontFamily::Monospace => {
+                            name_list.push(usvg::fontdb::Family::Monospace)
+                        }
                         usvg::FontFamily::Named(s) => match s.to_ascii_lowercase().as_str() {
                             "sans-serif" | "sans serif" | "sans" => {
                                 name_list.push(usvg::fontdb::Family::SansSerif)
                             }
                             "serif" => name_list.push(usvg::fontdb::Family::Serif),
-                            "monospace" | "mono" => {
-                                name_list.push(usvg::fontdb::Family::Monospace)
-                            }
+                            "monospace" | "mono" => name_list.push(usvg::fontdb::Family::Monospace),
                             "cursive" => name_list.push(usvg::fontdb::Family::Cursive),
                             "fantasy" => name_list.push(usvg::fontdb::Family::Fantasy),
                             _ => name_list.push(usvg::fontdb::Family::Name(s.as_str())),
@@ -118,7 +138,9 @@ impl SvgRenderer {
 
         let default_fallback = usvg::FontResolver::default_fallback_selector();
         let fallback_resolver = Box::new(
-            move |c: char, exclude_fonts: &[usvg::fontdb::ID], db: &mut Arc<usvg::fontdb::Database>| {
+            move |c: char,
+                  exclude_fonts: &[usvg::fontdb::ID],
+                  db: &mut Arc<usvg::fontdb::Database>| {
                 if let Some(id) = default_fallback(c, exclude_fonts, db) {
                     if let Some(face) = db.face(id) {
                         let is_symbol = face.families.iter().any(|(name, _)| {

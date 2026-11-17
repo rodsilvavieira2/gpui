@@ -71,12 +71,15 @@ impl BladeAtlas {
         lock.upload_belt.flush(sync_point);
     }
 
-    pub fn get_texture_info(&self, id: AtlasTextureId) -> BladeTextureInfo {
+    /// Returns the GPU view of `id`, or `None` when that atlas texture was
+    /// already destroyed by [`PlatformAtlas::remove`] (an image dropped between
+    /// paint and draw leaves primitives pointing at a freed texture).
+    pub fn get_texture_info(&self, id: AtlasTextureId) -> Option<BladeTextureInfo> {
         let lock = self.0.lock();
-        let texture = &lock.storage[id];
-        BladeTextureInfo {
+        let texture = lock.storage.get(id)?;
+        Some(BladeTextureInfo {
             raw_view: texture.raw_view,
-        }
+        })
     }
 }
 
@@ -112,16 +115,22 @@ impl PlatformAtlas for BladeAtlas {
             return;
         };
 
-        if let Some(mut texture) = texture_slot.take() {
-            texture.decrement_ref_count();
-            if texture.is_unreferenced() {
-                lock.storage[id.kind]
-                    .free_list
-                    .push(texture.id.index as usize);
-                texture.destroy(&lock.gpu);
-            } else {
-                *texture_slot = Some(texture);
-            }
+        let Some(mut texture) = texture_slot.take() else {
+            return;
+        };
+
+        texture.decrement_ref_count();
+        if texture.is_unreferenced() {
+            lock.storage[id.kind]
+                .free_list
+                .push(texture.id.index as usize);
+            texture.destroy(&lock.gpu);
+            // This texture may still be queued for initialization or upload in
+            // `flush`, which runs at the start of the next frame. Drop that
+            // work, otherwise `flush` would index a slot that no longer exists.
+            lock.discard_pending(texture.id);
+        } else {
+            *texture_slot = Some(texture);
         }
     }
 }
@@ -224,10 +233,19 @@ impl BladeAtlasState {
         self.uploads.push(PendingUpload { id, bounds, data });
     }
 
+    /// Drops queued `flush` work that references a texture that no longer exists.
+    fn discard_pending(&mut self, id: AtlasTextureId) {
+        retain_pending(&mut self.initializations, |queued| *queued, id);
+        retain_pending(&mut self.uploads, |upload| upload.id, id);
+    }
+
     fn flush_initializations(&mut self, encoder: &mut gpu::CommandEncoder) {
         for id in self.initializations.drain(..) {
-            let texture = &self.storage[id];
-            encoder.init_texture(texture.raw);
+            // The texture can be gone: an image released between frames destroys
+            // its atlas texture while this queue still holds its id.
+            if let Some(texture) = self.storage.get(id) {
+                encoder.init_texture(texture.raw);
+            }
         }
     }
 
@@ -236,7 +254,9 @@ impl BladeAtlasState {
 
         let mut transfers = encoder.transfer("atlas");
         for upload in self.uploads.drain(..) {
-            let texture = &self.storage[upload.id];
+            let Some(texture) = self.storage.get(upload.id) else {
+                continue;
+            };
             transfers.copy_buffer_to_texture(
                 upload.data,
                 upload.bounds.size.width.to_bytes(texture.bytes_per_pixel()),
@@ -258,6 +278,15 @@ impl BladeAtlasState {
             );
         }
     }
+}
+
+/// Keeps every queued entry whose texture id is still alive, preserving order.
+fn retain_pending<T>(
+    pending: &mut Vec<T>,
+    id_of: impl Fn(&T) -> AtlasTextureId,
+    discarded: AtlasTextureId,
+) {
+    pending.retain(|entry| id_of(entry) != discarded);
 }
 
 #[derive(Default)]
@@ -285,18 +314,13 @@ impl ops::IndexMut<AtlasTextureKind> for BladeAtlasStorage {
     }
 }
 
-impl ops::Index<AtlasTextureId> for BladeAtlasStorage {
-    type Output = BladeAtlasTexture;
-    fn index(&self, id: AtlasTextureId) -> &Self::Output {
-        let textures = match id.kind {
-            crate::AtlasTextureKind::Monochrome => &self.monochrome_textures,
-            crate::AtlasTextureKind::Polychrome => &self.polychrome_textures,
-        };
-        textures[id.index as usize].as_ref().unwrap()
-    }
-}
-
 impl BladeAtlasStorage {
+    /// Borrows the texture behind `id`, or `None` when that slot is empty
+    /// because the texture was destroyed (its index may since be reused).
+    fn get(&self, id: AtlasTextureId) -> Option<&BladeAtlasTexture> {
+        self[id.kind].textures.get(id.index as usize)?.as_ref()
+    }
+
     fn destroy(&mut self, gpu: &gpu::Context) {
         for mut texture in self.monochrome_textures.drain().flatten() {
             texture.destroy(gpu);
@@ -380,5 +404,101 @@ impl From<etagere::Rectangle> for Bounds<DevicePixels> {
             origin: rectangle.min.into(),
             size: rectangle.size().into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AtlasTextureId, AtlasTextureKind, BladeAtlasStorage, retain_pending};
+
+    fn id(index: u32, kind: AtlasTextureKind) -> AtlasTextureId {
+        AtlasTextureId { index, kind }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct Queued {
+        id: AtlasTextureId,
+        payload: u32,
+    }
+
+    // Regression: releasing an image between frames destroyed its atlas texture
+    // while `initializations`/`uploads` still held its id, so the next
+    // `flush_initializations` indexed a slot that had been emptied and panicked.
+    #[test]
+    fn discarding_a_destroyed_texture_drops_only_its_own_pending_work() {
+        let dead = id(3, AtlasTextureKind::Polychrome);
+        let mut pending = vec![
+            Queued {
+                id: id(1, AtlasTextureKind::Polychrome),
+                payload: 10,
+            },
+            Queued {
+                id: dead,
+                payload: 11,
+            },
+            Queued {
+                id: id(3, AtlasTextureKind::Monochrome),
+                payload: 12,
+            },
+            Queued {
+                id: id(2, AtlasTextureKind::Polychrome),
+                payload: 13,
+            },
+        ];
+
+        retain_pending(&mut pending, |entry| entry.id, dead);
+
+        assert_eq!(
+            pending,
+            vec![
+                Queued {
+                    id: id(1, AtlasTextureKind::Polychrome),
+                    payload: 10,
+                },
+                Queued {
+                    id: id(3, AtlasTextureKind::Monochrome),
+                    payload: 12,
+                },
+                Queued {
+                    id: id(2, AtlasTextureKind::Polychrome),
+                    payload: 13,
+                },
+            ],
+            "entries for live textures must survive in their original order"
+        );
+    }
+
+    #[test]
+    fn discarding_an_untracked_texture_keeps_every_pending_entry() {
+        let mut pending = vec![Queued {
+            id: id(0, AtlasTextureKind::Monochrome),
+            payload: 1,
+        }];
+        let before = vec![Queued {
+            id: id(0, AtlasTextureKind::Monochrome),
+            payload: 1,
+        }];
+
+        retain_pending(
+            &mut pending,
+            |entry| entry.id,
+            id(7, AtlasTextureKind::Polychrome),
+        );
+
+        assert_eq!(pending, before);
+    }
+
+    #[test]
+    fn emptied_texture_slots_are_reported_as_absent_instead_of_panicking() {
+        let mut storage = BladeAtlasStorage::default();
+        // `remove` destroys an unreferenced texture and leaves `None` behind so
+        // the index can be reused by a later `push_texture`.
+        storage.polychrome_textures.textures.push(None);
+        storage.polychrome_textures.textures.push(None);
+
+        assert!(storage.get(id(0, AtlasTextureKind::Polychrome)).is_none());
+        assert!(storage.get(id(1, AtlasTextureKind::Polychrome)).is_none());
+        assert!(storage.get(id(9, AtlasTextureKind::Polychrome)).is_none());
+        assert!(storage.get(id(0, AtlasTextureKind::Monochrome)).is_none());
     }
 }
